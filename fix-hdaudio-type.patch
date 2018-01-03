@@ -1,0 +1,143 @@
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/hda_generic.c.orig	2017-12-28 23:04:49.551031492 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/hda_generic.c	2017-12-28 23:05:06.749014885 +0800
+@@ -5920,7 +5920,7 @@
+ 	HDA_CODEC_ENTRY(HDA_CODEC_ID_GENERIC, "Generic", snd_hda_parse_generic_codec),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_generic);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_generic);
+ 
+ static struct hda_codec_driver generic_driver = {
+ 	.id = snd_hda_id_generic,
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_analog.c.orig	2017-12-28 23:00:05.278305861 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_analog.c	2017-12-28 23:00:29.114282856 +0800
+@@ -1183,7 +1183,7 @@
+ 	HDA_CODEC_ENTRY(0x11d4989b, "AD1989B", patch_ad1988),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_analog);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_analog);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Analog Devices HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_sigmatel.c.orig	2017-12-28 23:11:36.166774763 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_sigmatel.c	2017-12-28 23:11:50.790765994 +0800
+@@ -5162,7 +5162,7 @@
+ 	HDA_CODEC_ENTRY(0x111d76f3, "92HD66C3/65", patch_stac92hd83xxx),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_sigmatel);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_sigmatel);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("IDT/Sigmatel HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_conexant.c.orig	2017-12-28 23:07:08.940934898 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_conexant.c	2017-12-28 23:07:34.208919759 +0800
+@@ -1032,7 +1032,7 @@
+ 	HDA_CODEC_ENTRY(0x14f151d7, "CX20952", patch_conexant_auto),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_conexant);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_conexant);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Conexant HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_realtek.c.orig	2017-12-28 23:10:37.852809701 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_realtek.c	2017-12-28 23:10:50.217802293 +0800
+@@ -7575,7 +7575,7 @@
+ 	HDA_CODEC_ENTRY(0x10ec1220, "ALC1220", patch_alc882),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_realtek);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_realtek);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Realtek HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_via.c.orig	2017-12-28 23:12:09.016755069 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_via.c	2017-12-28 23:12:21.724747455 +0800
+@@ -1254,7 +1254,7 @@
+ 	HDA_CODEC_ENTRY(0x11064762, "VT1808", patch_vt3476),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_via);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_via);
+ 
+ static struct hda_codec_driver via_driver = {
+ 	.id = snd_hda_id_via,
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_ca0110.c.orig	2017-12-28 23:02:12.006183546 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_ca0110.c	2017-12-28 23:02:32.751163526 +0800
+@@ -89,7 +89,7 @@
+ 	HDA_CODEC_ENTRY(0x1102000d, "SB0880 X-Fi", patch_ca0110),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_ca0110);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_ca0110);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Creative CA0110-IBG HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_cirrus.c.orig	2017-12-28 23:06:04.302973636 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_cirrus.c	2017-12-28 23:06:18.425965169 +0800
+@@ -1254,7 +1254,7 @@
+ 	HDA_CODEC_ENTRY(0x10134213, "CS4213", patch_cs4213),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_cirrus);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_cirrus);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Cirrus Logic HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_si3054.c.orig	2017-12-28 23:11:06.876792310 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_si3054.c	2017-12-28 23:11:21.133783765 +0800
+@@ -306,7 +306,7 @@
+ 	HDA_CODEC_ENTRY(0x18540018, "Si3054", patch_si3054),
+ 	{}
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_si3054);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_si3054);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Si3054 HD-audio modem codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_cmedia.c.orig	2017-12-28 23:06:37.494953746 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_cmedia.c	2017-12-28 23:06:56.188942540 +0800
+@@ -129,7 +129,7 @@
+ 	HDA_CODEC_ENTRY(0x434d4980, "CMI9880", patch_cmi9880),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_cmedia);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_cmedia);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("C-Media HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_ca0132.c.orig	2017-12-28 23:05:30.695993768 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_ca0132.c	2017-12-28 23:05:47.443983733 +0800
+@@ -4881,7 +4881,7 @@
+ 	HDA_CODEC_ENTRY(0x11020011, "CA0132", patch_ca0132),
+ 	{} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_ca0132);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_ca0132);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("Creative Sound Core3D codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_hdmi.c.orig	2017-12-28 23:07:56.251906543 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/pci/hda/patch_hdmi.c	2017-12-28 23:10:22.390818969 +0800
+@@ -3667,7 +3667,7 @@
+ HDA_CODEC_ENTRY(HDA_CODEC_ID_GENERIC_HDMI, "Generic HDMI", patch_generic_hdmi),
+ {} /* terminator */
+ };
+-MODULE_DEVICE_TABLE(hdaudio, snd_hda_id_hdmi);
++MODULE_DEVICE_TABLE(hda, snd_hda_id_hdmi);
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("HDMI HD-audio codec");
+--- linux-3.10.0-693.el7.centos.plus.x86_64/sound/soc/codecs/hdac_hdmi.orig	2017-12-28 23:14:26.666672585 +0800
++++ linux-3.10.0-693.el7.centos.plus.x86_64/sound/soc/codecs/hdac_hdmi.c	2017-12-28 23:14:42.536663073 +0800
+@@ -1822,7 +1822,7 @@
+ 	{}
+ };
+ 
+-MODULE_DEVICE_TABLE(hdaudio, hdmi_list);
++MODULE_DEVICE_TABLE(hda, hdmi_list);
+ 
+ static struct hdac_ext_driver hdmi_driver = {
+ 	. hdac = {

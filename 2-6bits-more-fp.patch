@@ -1,0 +1,91 @@
+diff --git a/drivers/cpufreq/intel_pstate.c b/drivers/cpufreq/intel_pstate.c
+index ed1f7d2..7df6e52 100644
+--- a/drivers/cpufreq/intel_pstate.c
++++ b/drivers/cpufreq/intel_pstate.c
+@@ -42,6 +42,11 @@
+ #define int_tofp(X) ((int64_t)(X) << FRAC_BITS)
+ #define fp_toint(X) ((X) >> FRAC_BITS)
+ 
++#define EXT_BITS 6
++#define EXT_FRAC_BITS	(EXT_BITS + FRAC_BITS)
++#define fp_ext_toint(X)	((X) >> EXT_FRAC_BITS)
++#define int_ext_tofp(X)	((int64_t) (X) << EXT_FRAC_BITS)
++
+ static inline int32_t mul_fp(int32_t x, int32_t y)
+ {
+ 	return ((int64_t)x * (int64_t)y) >> FRAC_BITS;
+@@ -63,6 +68,16 @@ static inline int ceiling_fp(int32_t x)
+ 	return ret;
+ }
+ 
++static inline u64 mul_ext_fp(u64 x, u64 y)
++{
++	return (x * y) >> EXT_FRAC_BITS;
++}
++
++static inline u64 div_ext_fp(u64 x, u64 y)
++{
++	return div64_u64(x << EXT_FRAC_BITS, y);
++}
++
+ struct sample {
+ 	int32_t core_pct_busy;
+ 	int32_t busy_scaled;
+@@ -509,7 +524,7 @@ static ssize_t store_max_perf_pct(struct kobject *a, struct attribute *b,
+ 				limits->max_sysfs_pct);
+ 		cpu->max_perf_pct = max(cpu->min_perf_pct,
+ 				cpu->max_perf_pct);
+-		cpu->max_perf = div_fp(cpu->max_perf_pct, 100);
++		cpu->max_perf = div_ext_fp(cpu->max_perf_pct, 100);
+ 	}
+ 	mutex_unlock(&perf_limits_lock);
+ 	put_online_cpus();
+@@ -548,7 +563,7 @@ static ssize_t store_min_perf_pct(struct kobject *a, struct attribute *b,
+ 				limits->min_sysfs_pct);
+ 		cpu->min_perf_pct = min(cpu->max_perf_pct,
+ 				cpu->min_perf_pct);
+-		cpu->min_perf = div_fp(cpu->min_perf_pct, 100);
++		cpu->min_perf = div_ext_fp(cpu->min_perf_pct, 100);
+ 	}
+ 	mutex_unlock(&perf_limits_lock);
+ 	put_online_cpus();
+@@ -868,11 +883,11 @@ static void intel_pstate_get_min_max(struct cpudata *cpu, int *min, int *max)
+ 	 * policy, or by cpu specific default values determined through
+ 	 * experimentation.
+ 	 */
+-	max_perf_adj = fp_toint(mul_fp(int_tofp(max_perf), cpu->max_perf));
++	max_perf_adj = fp_ext_toint(max_perf * cpu->max_perf);
+ 	*max = clamp_t(int, max_perf_adj,
+ 			cpu->pstate.min_pstate, cpu->pstate.turbo_pstate);
+ 
+-	min_perf = fp_toint(mul_fp(int_tofp(max_perf), cpu->min_perf));
++	min_perf = fp_ext_toint(max_perf * cpu->min_perf);
+ 	*min = clamp_t(int, min_perf, cpu->pstate.min_pstate, max_perf);
+ }
+ 
+@@ -1178,8 +1193,8 @@ static unsigned int intel_pstate_get(unsigned int cpu_num)
+ 
+ static void intel_pstate_set_performance_limits(struct cpudata *cpu)
+ {
+-	cpu->max_perf = int_tofp(1);
+-	cpu->min_perf = int_tofp(1);
++	cpu->max_perf = int_ext_tofp(1);
++	cpu->min_perf = int_ext_tofp(1);
+ 	cpu->max_policy_pct = 100;
+ 	cpu->min_policy_pct = 0;
+ 	cpu->max_perf_pct = 100;
+@@ -1227,10 +1242,10 @@ static int intel_pstate_set_policy(struct cpufreq_policy *policy)
+ 	}
+ 	cpu->min_perf_pct = max(cpu->min_policy_pct, limits->min_sysfs_pct);
+ 	cpu->max_perf_pct = min(cpu->max_policy_pct, limits->max_sysfs_pct);
+-	cpu->min_perf = div_fp(cpu->min_perf_pct, 100);
+-	cpu->max_perf = div_fp(cpu->max_perf_pct, 100);
+-	cpu->max_perf = round_up(cpu->max_perf, FRAC_BITS);
+-	cpu->min_perf = round_up(cpu->min_perf, FRAC_BITS);
++	cpu->min_perf = div_ext_fp(cpu->min_perf_pct, 100);
++	cpu->max_perf = div_ext_fp(cpu->max_perf_pct, 100);
++	cpu->max_perf = round_up(cpu->max_perf, EXT_FRAC_BITS);
++	cpu->min_perf = round_up(cpu->min_perf, EXT_FRAC_BITS);
+ 	
+ 	mutex_unlock(&perf_limits_lock);
+ 	pr_debug("cpu->min:%d, cpu->max:%d, limit->min:%d, limit->max:%d\n",

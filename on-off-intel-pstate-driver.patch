@@ -1,0 +1,358 @@
+--- linux-3.10.0-693.el7.centos.plus.x86_64/drivers/cpufreq/intel_pstate.c	2017-12-13 15:12:18.843195306 +0200
++++ 693/drivers/cpufreq/intel_pstate.c	2017-12-13 15:38:13.506937580 +0200
+@@ -169,7 +169,10 @@
+ static struct pstate_adjust_policy pid_params;
+ static struct pstate_funcs pstate_funcs;
+ static int hwp_active;
++static bool driver_registered __read_mostly;
++
+ static DEFINE_MUTEX(perf_limits_lock);
++static DEFINE_MUTEX(intel_pstate_driver_lock);
+ 
+ struct perf_limits {
+ 	int no_turbo;
+@@ -330,14 +333,26 @@
+ /************************** debugfs begin ************************/
+ static int pid_param_set(void *data, u64 val)
+ {
++	mutex_lock(&intel_pstate_driver_lock);
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	*(u32 *)data = val;
+ 	intel_pstate_reset_all_pid();
++	mutex_unlock(&intel_pstate_driver_lock);
+ 	return 0;
+ }
+ 
+ static int pid_param_get(void *data, u64 *val)
+ {
++	mutex_lock(&intel_pstate_driver_lock);
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	*val = *(u32 *)data;
++	mutex_unlock(&intel_pstate_driver_lock);
+ 	return 0;
+ }
+ DEFINE_SIMPLE_ATTRIBUTE(fops_pid_param, pid_param_get, pid_param_set, "%llu\n");
+@@ -379,6 +394,32 @@
+ 
+ /************************** sysfs begin ************************/
+ 
++static ssize_t intel_pstate_show_status(char *buf);
++static int intel_pstate_update_status(const char *buf, size_t size);
++
++static ssize_t show_status(struct kobject *kobj,
++				struct attribute *attr, char *buf)
++{
++	ssize_t ret;
++
++	mutex_lock(&intel_pstate_driver_lock);
++	ret = intel_pstate_show_status(buf);
++	mutex_unlock(&intel_pstate_driver_lock);
++
++	return ret;
++}
++
++static ssize_t store_status(struct kobject *a, struct attribute *b,
++				const char *buf, size_t count)
++{
++	char *p = memchr(buf, '\n', count);
++	int ret;
++
++	ret = intel_pstate_update_status(buf, p ? p - buf : count);
++
++	return ret < 0 ? ret : count;
++}
++
+ static ssize_t show_turbo_pct(struct kobject *kobj,
+ 				struct attribute *attr, char *buf)
+ {
+@@ -386,12 +427,20 @@
+ 	int total, no_turbo, turbo_pct;
+ 	uint32_t turbo_fp;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	cpu = all_cpu_data[0];
+ 
+ 	total = cpu->pstate.turbo_pstate - cpu->pstate.min_pstate + 1;
+ 	no_turbo = cpu->pstate.max_pstate - cpu->pstate.min_pstate + 1;
+ 	turbo_fp = div_fp(int_tofp(no_turbo), int_tofp(total));
+ 	turbo_pct = 100 - fp_toint(mul_fp(turbo_fp, int_tofp(100)));
++	mutex_unlock(&intel_pstate_driver_lock);
++
+ 	return sprintf(buf, "%u\n", turbo_pct);
+ }
+ 
+@@ -401,8 +450,16 @@
+ 	struct cpudata *cpu;
+ 	int total;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	cpu = all_cpu_data[0];
+ 	total = cpu->pstate.turbo_pstate - cpu->pstate.min_pstate + 1;
++	mutex_unlock(&intel_pstate_driver_lock);
++
+ 	return sprintf(buf, "%u\n", total);
+ }
+ 
+@@ -411,11 +468,18 @@
+ {
+ 	ssize_t ret;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	update_turbo_state();
+ 	if (limits->turbo_disabled)
+ 		ret = sprintf(buf, "%u\n", limits->turbo_disabled);
+ 	else
+ 		ret = sprintf(buf, "%u\n", limits->no_turbo);
++	mutex_unlock(&intel_pstate_driver_lock);
+ 
+ 	return ret;
+ }
+@@ -426,12 +490,21 @@
+ 	unsigned int input;
+ 	int ret;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	ret = sscanf(buf, "%u", &input);
+-	if (ret != 1)
++	if (ret != 1) {
++		mutex_unlock(&intel_pstate_driver_lock);
+ 		return -EINVAL;
++	}
+ 
+ 	update_turbo_state();
+ 	if (limits->turbo_disabled) {
++		mutex_unlock(&intel_pstate_driver_lock);
+ 		pr_warn("Turbo disabled by BIOS or unavailable on processor\n");
+ 		return -EPERM;
+ 	}
+@@ -440,6 +513,7 @@
+ 
+ 	if (hwp_active)
+ 		intel_pstate_hwp_set_online_cpus();
++	mutex_unlock(&intel_pstate_driver_lock);
+ 
+ 	return count;
+ }
+@@ -472,9 +546,15 @@
+ {
+ 	int max_perf, min_perf;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	get_online_cpus();
+ 	get_max_min_perf(&max_perf, &min_perf);
+ 	put_online_cpus();
++	mutex_unlock(&intel_pstate_driver_lock);
+ 
+ 	return sprintf(buf, "%d\n", max_perf);
+ }
+@@ -484,9 +564,15 @@
+ {
+ 	int max_perf, min_perf;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	get_online_cpus();
+ 	get_max_min_perf(&max_perf, &min_perf);
+ 	put_online_cpus();
++	mutex_unlock(&intel_pstate_driver_lock);
+ 
+ 	return sprintf(buf, "%d\n", min_perf);
+ }
+@@ -500,9 +586,16 @@
+ 	int cpu_index;
+ 	int ret;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	ret = sscanf(buf, "%u", &input);
+-	if (ret != 1)
++	if (ret != 1) {
++		mutex_unlock(&intel_pstate_driver_lock);
+ 		return -EINVAL;
++	}
+ 
+ 	max_sysfs_pct = clamp_t(int, input, 0, 100);
+ 
+@@ -511,6 +604,7 @@
+ 	get_max_min_perf(&max_perf, &min_perf);
+ 	if (max_sysfs_pct < min_perf) {
+ 		put_online_cpus();
++		mutex_unlock(&intel_pstate_driver_lock);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -530,6 +624,8 @@
+ 	put_online_cpus();
+ 	if (hwp_active)
+ 		intel_pstate_hwp_set_online_cpus();
++	mutex_unlock(&intel_pstate_driver_lock);
++
+ 	return count;
+ }
+ 
+@@ -542,9 +638,16 @@
+ 	int cpu_index;
+ 	int ret;
+ 
++	mutex_lock(&intel_pstate_driver_lock);
++	if (!driver_registered) {
++		mutex_unlock(&intel_pstate_driver_lock);
++		return -EAGAIN;
++	}
+ 	ret = sscanf(buf, "%u", &input);
+-	if (ret != 1)
++	if (ret != 1) {
++		mutex_unlock(&intel_pstate_driver_lock);
+ 		return -EINVAL;
++	}
+ 	min_sysfs_pct = clamp_t(int, input, 0, 100);
+ 
+ 	get_online_cpus();
+@@ -552,6 +655,7 @@
+ 	get_max_min_perf(&max_perf, &min_perf);
+ 	if (min_sysfs_pct > max_perf) {
+ 		put_online_cpus();
++		mutex_unlock(&intel_pstate_driver_lock);
+ 		return -EINVAL;
+ 	}
+ 	mutex_lock(&perf_limits_lock);
+@@ -570,9 +674,11 @@
+ 
+ 	if (hwp_active)
+ 		intel_pstate_hwp_set_online_cpus();
++	mutex_unlock(&intel_pstate_driver_lock);
+ 	return count;
+ }
+ 
++define_one_global_rw(status);
+ define_one_global_rw(no_turbo);
+ define_one_global_rw(max_perf_pct);
+ define_one_global_rw(min_perf_pct);
+@@ -580,6 +686,7 @@
+ define_one_global_ro(num_pstates);
+ 
+ static struct attribute *intel_pstate_attributes[] = {
++	&status.attr,
+ 	&no_turbo.attr,
+ 	&max_perf_pct.attr,
+ 	&min_perf_pct.attr,
+@@ -1322,6 +1429,74 @@
+ 	.name		= "intel_pstate",
+ };
+ 
++static void intel_pstate_driver_cleanup(void)
++{
++	unsigned int cpu;
++
++	pr_info("Intel P-state driver cleanup.\n");
++	get_online_cpus();
++	for_each_online_cpu(cpu) {
++		if (all_cpu_data[cpu]) {
++			del_timer_sync(&all_cpu_data[cpu]->timer);
++			kfree(all_cpu_data[cpu]);
++			all_cpu_data[cpu] = NULL;
++		}
++	}
++	put_online_cpus();
++}
++
++static int intel_pstate_register_driver(void)
++{
++	int rc;
++	
++	mutex_lock(&intel_pstate_driver_lock);
++	rc = cpufreq_register_driver(&intel_pstate_driver);
++	if (rc) {
++		driver_registered = false;
++		mutex_unlock(&intel_pstate_driver_lock);
++		return rc;
++	}
++	driver_registered = true;
++	mutex_unlock(&intel_pstate_driver_lock);
++	return 0;
++}
++
++static int intel_pstate_unregister_driver(void)
++{
++	if (hwp_active)
++		return -EBUSY;
++
++	mutex_lock(&intel_pstate_driver_lock);
++	driver_registered = false;
++	cpufreq_unregister_driver(&intel_pstate_driver);
++	intel_pstate_driver_cleanup();
++	mutex_unlock(&intel_pstate_driver_lock);
++	return 0;
++}
++
++static ssize_t intel_pstate_show_status(char *buf)
++{
++	int ret;
++
++	if (!driver_registered)
++		return sprintf(buf, "off\n");
++	ret = sprintf(buf, "%s\n", "active");
++
++	return ret;
++}
++
++static int intel_pstate_update_status(const char *buf, size_t size)
++{
++	if (size == 3 && !strncmp(buf, "off", size))
++		return driver_registered ?
++			intel_pstate_unregister_driver() : -EINVAL;
++	if (size == 6 && !strncmp(buf, "active", size)) {
++		if (driver_registered) 
++			return 0;
++		return intel_pstate_register_driver();
++	}
++	return -EINVAL;
++}
+ static int __initdata no_load;
+ static int __initdata no_hwp;
+ static int __initdata hwp_only;
+@@ -1526,7 +1701,7 @@
+ 	if (!hwp_active && hwp_only)
+ 		goto out;
+ 
+-	rc = cpufreq_register_driver(&intel_pstate_driver);
++	rc = intel_pstate_register_driver();
+ 	if (rc)
+ 		goto out;
+ 

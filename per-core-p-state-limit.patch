@@ -1,0 +1,405 @@
+commit 260bfdc629ca0937f5868e8f00bb6f09895fb26a
+Author: Luming Yu <luming.yu@intel.com>
+Date:   Tue Dec 12 09:50:39 2017 +0200
+
+    per core pstate patch centos 7.4 rebase
+
+diff --git a/drivers/cpufreq/intel_pstate.c b/drivers/cpufreq/intel_pstate.c
+index 349e39e..11df2db 100644
+--- a/drivers/cpufreq/intel_pstate.c
++++ b/drivers/cpufreq/intel_pstate.c
+@@ -102,6 +102,7 @@ struct _pid {
+ struct cpudata {
+ 	int cpu;
+ 
++	unsigned int policy;
+ 	struct timer_list timer;
+ 
+ 	struct pstate_data pstate;
+@@ -113,6 +114,12 @@ struct cpudata {
+ 	u64	prev_mperf;
+ 	u64	prev_tsc;
+ 	struct sample sample;
++	int32_t	max_perf;
++	int32_t	min_perf;
++	int	max_policy_pct;
++	int	min_policy_pct;
++	int	max_perf_pct;
++	int	min_perf_pct;
+ };
+ 
+ static struct cpudata **all_cpu_data;
+@@ -147,43 +154,26 @@ static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu);
+ static struct pstate_adjust_policy pid_params;
+ static struct pstate_funcs pstate_funcs;
+ static int hwp_active;
++static DEFINE_MUTEX(perf_limits_lock);
+ 
+ struct perf_limits {
+ 	int no_turbo;
+ 	int turbo_disabled;
+-	int max_perf_pct;
+-	int min_perf_pct;
+-	int32_t max_perf;
+-	int32_t min_perf;
+-	int max_policy_pct;
+ 	int max_sysfs_pct;
+-	int min_policy_pct;
+ 	int min_sysfs_pct;
+ };
+ 
+ static struct perf_limits performance_limits = {
+ 	.no_turbo = 0,
+ 	.turbo_disabled = 0,
+-	.max_perf_pct = 100,
+-	.max_perf = int_tofp(1),
+-	.min_perf_pct = 100,
+-	.min_perf = int_tofp(1),
+-	.max_policy_pct = 100,
+ 	.max_sysfs_pct = 100,
+-	.min_policy_pct = 0,
+ 	.min_sysfs_pct = 0,
+ };
+ 
+ static struct perf_limits powersave_limits = {
+ 	.no_turbo = 0,
+ 	.turbo_disabled = 0,
+-	.max_perf_pct = 100,
+-	.max_perf = int_tofp(1),
+-	.min_perf_pct = 0,
+-	.min_perf = 0,
+-	.max_policy_pct = 100,
+ 	.max_sysfs_pct = 100,
+-	.min_policy_pct = 0,
+ 	.min_sysfs_pct = 0,
+ };
+ 
+@@ -296,12 +286,12 @@ static void intel_pstate_hwp_set(const struct cpumask *cpumask)
+ 
+ 	for_each_cpu(cpu, cpumask) {
+ 		rdmsrl_on_cpu(cpu, MSR_HWP_REQUEST, &value);
+-		adj_range = limits->min_perf_pct * range / 100;
++		adj_range = all_cpu_data[cpu]->min_perf_pct * range / 100;
+ 		min = hw_min + adj_range;
+ 		value &= ~HWP_MIN_PERF(~0L);
+ 		value |= HWP_MIN_PERF(min);
+ 
+-		adj_range = limits->max_perf_pct * range / 100;
++		adj_range = all_cpu_data[cpu]->max_perf_pct * range / 100;
+ 		max = hw_min + adj_range;
+ 		if (limits->no_turbo) {
+ 			hw_max = HWP_GUARANTEED_PERF(cap);
+@@ -373,12 +363,6 @@ static void __init intel_pstate_debug_expose_params(void)
+ /************************** debugfs end ************************/
+ 
+ /************************** sysfs begin ************************/
+-#define show_one(file_name, object)					\
+-	static ssize_t show_##file_name					\
+-	(struct kobject *kobj, struct attribute *attr, char *buf)	\
+-	{								\
+-		return sprintf(buf, "%u\n", limits->object);		\
+-	}
+ 
+ static ssize_t show_turbo_pct(struct kobject *kobj,
+ 				struct attribute *attr, char *buf)
+@@ -445,26 +429,90 @@ static ssize_t store_no_turbo(struct kobject *a, struct attribute *b,
+ 	return count;
+ }
+ 
++static void get_max_min_perf(int *max_perf, int *min_perf)
++{
++	int cpu_index;
++
++	*max_perf = 0;
++	*min_perf = 0;
++
++	mutex_lock(&perf_limits_lock);
++	for_each_online_cpu(cpu_index) {
++		struct cpudata *cpu = all_cpu_data[cpu_index];
++
++		if (!*max_perf || *max_perf > cpu->max_perf_pct)
++			*max_perf = cpu->max_perf_pct;
++
++		if (!*min_perf || *min_perf < cpu->min_perf_pct)
++			*min_perf = cpu->min_perf_pct;
++
++		pr_debug("%d: max_perf %d, min_perf %d\n", cpu_index,
++				cpu->max_perf_pct, cpu->min_perf_pct);
++	}
++	mutex_unlock(&perf_limits_lock);
++}
++
++static ssize_t show_max_perf_pct(struct kobject *kobj,
++		struct attribute *attr, char *buf)
++{
++	int max_perf, min_perf;
++
++	get_online_cpus();
++	get_max_min_perf(&max_perf, &min_perf);
++	put_online_cpus();
++
++	return sprintf(buf, "%d\n", max_perf);
++}
++
++static ssize_t show_min_perf_pct(struct kobject *kobj,
++		struct attribute *attr, char *buf)
++{
++	int max_perf, min_perf;
++
++	get_online_cpus();
++	get_max_min_perf(&max_perf, &min_perf);
++	put_online_cpus();
++
++	return sprintf(buf, "%d\n", min_perf);
++}
++
+ static ssize_t store_max_perf_pct(struct kobject *a, struct attribute *b,
+ 				  const char *buf, size_t count)
+ {
+ 	unsigned int input;
++	int max_perf, min_perf;
++	int max_sysfs_pct;
++	int cpu_index;
+ 	int ret;
+ 
+ 	ret = sscanf(buf, "%u", &input);
+ 	if (ret != 1)
+ 		return -EINVAL;
+ 
+-	limits->max_sysfs_pct = clamp_t(int, input, 0 , 100);
+-	limits->max_perf_pct = min(limits->max_policy_pct,
+-				   limits->max_sysfs_pct);
+-	limits->max_perf_pct = max(limits->min_policy_pct,
+-				   limits->max_perf_pct);
+-	limits->max_perf_pct = max(limits->min_perf_pct,
+-				   limits->max_perf_pct);
+-	limits->max_perf = div_fp(int_tofp(limits->max_perf_pct),
+-				  int_tofp(100));
++	max_sysfs_pct = clamp_t(int, input, 0, 100);
++
++	get_online_cpus();
++
++	get_max_min_perf(&max_perf, &min_perf);
++	if (max_sysfs_pct < min_perf) {
++		put_online_cpus();
++		return -EINVAL;
++	}
+ 
++	mutex_lock(&perf_limits_lock);
++	limits->max_sysfs_pct = max_sysfs_pct;
++
++	for_each_online_cpu(cpu_index) {
++		struct cpudata *cpu = all_cpu_data[cpu_index];
++
++		cpu->max_perf_pct = min(cpu->max_policy_pct,
++				limits->max_sysfs_pct);
++		cpu->max_perf_pct = max(cpu->min_perf_pct,
++				cpu->max_perf_pct);
++		cpu->max_perf = div_fp(cpu->max_perf_pct, 100);
++	}
++	mutex_unlock(&perf_limits_lock);
++	put_online_cpus();
+ 	if (hwp_active)
+ 		intel_pstate_hwp_set_online_cpus();
+ 	return count;
+@@ -474,30 +522,42 @@ static ssize_t store_min_perf_pct(struct kobject *a, struct attribute *b,
+ 				  const char *buf, size_t count)
+ {
+ 	unsigned int input;
++	int max_perf, min_perf;
++	int min_sysfs_pct;
++	int cpu_index;
+ 	int ret;
+ 
+ 	ret = sscanf(buf, "%u", &input);
+ 	if (ret != 1)
+ 		return -EINVAL;
++	min_sysfs_pct = clamp_t(int, input, 0, 100);
++
++	get_online_cpus();
+ 
+-	limits->min_sysfs_pct = clamp_t(int, input, 0 , 100);
+-	limits->min_perf_pct = max(limits->min_policy_pct,
+-				   limits->min_sysfs_pct);
+-	limits->min_perf_pct = min(limits->max_policy_pct,
+-				   limits->min_perf_pct);
+-	limits->min_perf_pct = min(limits->max_perf_pct,
+-				   limits->min_perf_pct);
+-	limits->min_perf = div_fp(int_tofp(limits->min_perf_pct),
+-				  int_tofp(100));
++	get_max_min_perf(&max_perf, &min_perf);
++	if (min_sysfs_pct > max_perf) {
++		put_online_cpus();
++		return -EINVAL;
++	}
++	mutex_lock(&perf_limits_lock);
++	limits->min_sysfs_pct = min_sysfs_pct;
++
++	for_each_online_cpu(cpu_index) {
++		struct cpudata *cpu = all_cpu_data[cpu_index];
++		cpu->min_perf_pct = max(cpu->min_policy_pct,
++				limits->min_sysfs_pct);
++		cpu->min_perf_pct = min(cpu->max_perf_pct,
++				cpu->min_perf_pct);
++		cpu->min_perf = div_fp(cpu->min_perf_pct, 100);
++	}
++	mutex_unlock(&perf_limits_lock);
++	put_online_cpus();
+ 
+ 	if (hwp_active)
+ 		intel_pstate_hwp_set_online_cpus();
+ 	return count;
+ }
+ 
+-show_one(max_perf_pct, max_perf_pct);
+-show_one(min_perf_pct, min_perf_pct);
+-
+ define_one_global_rw(no_turbo);
+ define_one_global_rw(max_perf_pct);
+ define_one_global_rw(min_perf_pct);
+@@ -808,11 +868,11 @@ static void intel_pstate_get_min_max(struct cpudata *cpu, int *min, int *max)
+ 	 * policy, or by cpu specific default values determined through
+ 	 * experimentation.
+ 	 */
+-	max_perf_adj = fp_toint(mul_fp(int_tofp(max_perf), limits->max_perf));
++	max_perf_adj = fp_toint(mul_fp(int_tofp(max_perf), cpu->max_perf));
+ 	*max = clamp_t(int, max_perf_adj,
+ 			cpu->pstate.min_pstate, cpu->pstate.turbo_pstate);
+ 
+-	min_perf = fp_toint(mul_fp(int_tofp(max_perf), limits->min_perf));
++	min_perf = fp_toint(mul_fp(int_tofp(max_perf), cpu->min_perf));
+ 	*min = clamp_t(int, min_perf, cpu->pstate.min_pstate, max_perf);
+ }
+ 
+@@ -1057,12 +1117,18 @@ static int intel_pstate_init_cpu(unsigned int cpunum)
+ {
+ 	struct cpudata *cpu;
+ 
+-	if (!all_cpu_data[cpunum])
++	if (!all_cpu_data[cpunum]) {
+ 		all_cpu_data[cpunum] = kzalloc(sizeof(struct cpudata),
+ 					       GFP_KERNEL);
+-	if (!all_cpu_data[cpunum])
+-		return -ENOMEM;
+-
++		if (!all_cpu_data[cpunum])
++			return -ENOMEM;
++		all_cpu_data[cpunum]->max_perf_pct = 100;
++#ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
++		all_cpu_data[cpunum]->min_perf_pct = 100;
++#else
++		all_cpu_data[cpunum]->min_perf_pct = 0;
++#endif
++	}
+ 	cpu = all_cpu_data[cpunum];
+ 
+ 	cpu->cpu = cpunum;
+@@ -1110,50 +1176,66 @@ static unsigned int intel_pstate_get(unsigned int cpu_num)
+ 	return sample->freq;
+ }
+ 
++static void intel_pstate_set_performance_limits(struct cpudata *cpu)
++{
++	cpu->max_perf = int_tofp(1);
++	cpu->min_perf = int_tofp(1);
++	cpu->max_policy_pct = 100;
++	cpu->min_policy_pct = 0;
++	cpu->max_perf_pct = 100;
++	cpu->min_perf_pct = 100;
++}
++
+ static int intel_pstate_set_policy(struct cpufreq_policy *policy)
+ {
++	struct cpudata *cpu;
++
+ 	if (!policy->cpuinfo.max_freq)
+ 		return -ENODEV;
+ 
+ 	pr_debug("set_policy cpuinfo.max %u policy->max %u\n",
+ 		 policy->cpuinfo.max_freq, policy->max);
+ 
+-	if (policy->policy == CPUFREQ_POLICY_PERFORMANCE &&
+-	    policy->max >= policy->cpuinfo.max_freq) {
+-		pr_debug("intel_pstate: set performance\n");
++	cpu = all_cpu_data[policy->cpu];
++
++	cpu->policy = policy->policy;
++
++	if (policy->policy == CPUFREQ_POLICY_PERFORMANCE) {
+ 		limits = &performance_limits;
+-		if (hwp_active)
+-			intel_pstate_hwp_set(policy->cpus);
+-		return 0;
++		if (policy->max >= policy->cpuinfo.max_freq &&
++				limits->max_sysfs_pct == 100) {
++			pr_debug("intel_pstate: set performance\n");
++			intel_pstate_set_performance_limits(cpu);
++			goto out;
++		}
++	} else {
++		pr_debug("set powersave\n");
++		limits = &powersave_limits;
+ 	}
+ 
+-	pr_debug("intel_pstate: set powersave\n");
+-	limits = &powersave_limits;
+-	limits->min_policy_pct = (policy->min * 100) / policy->cpuinfo.max_freq;
+-	limits->min_policy_pct = clamp_t(int, limits->min_policy_pct, 0 , 100);
+-	limits->max_policy_pct = DIV_ROUND_UP(policy->max * 100,
+-					      policy->cpuinfo.max_freq);
+-	limits->max_policy_pct = clamp_t(int, limits->max_policy_pct, 0 , 100);
+-
+-	/* Normalize user input to [min_policy_pct, max_policy_pct] */
+-	limits->min_perf_pct = max(limits->min_policy_pct,
+-				   limits->min_sysfs_pct);
+-	limits->min_perf_pct = min(limits->max_policy_pct,
+-				   limits->min_perf_pct);
+-	limits->max_perf_pct = min(limits->max_policy_pct,
+-				   limits->max_sysfs_pct);
+-	limits->max_perf_pct = max(limits->min_policy_pct,
+-				   limits->max_perf_pct);
+-
+-	/* Make sure min_perf_pct <= max_perf_pct */
+-	limits->min_perf_pct = min(limits->max_perf_pct, limits->min_perf_pct);
+-
+-	limits->min_perf = div_fp(int_tofp(limits->min_perf_pct),
+-				  int_tofp(100));
+-	limits->max_perf = div_fp(int_tofp(limits->max_perf_pct),
+-				  int_tofp(100));
+-	limits->max_perf = round_up(limits->max_perf, FRAC_BITS);
+-
++	mutex_lock(&perf_limits_lock);
++
++	cpu->max_policy_pct = DIV_ROUND_UP(policy->max * 100,
++			policy->cpuinfo.max_freq);
++	cpu->max_policy_pct = clamp_t(int, cpu->max_policy_pct, 0, 100);
++	if (policy->max == policy->min)
++		cpu->min_policy_pct = cpu->max_policy_pct;
++	else {
++		cpu->min_policy_pct = (policy->min * 100) /
++			policy->cpuinfo.max_freq;
++		cpu->min_policy_pct = clamp_t(int, cpu->min_policy_pct, 0, 100);
++	}
++	cpu->min_perf_pct = max(cpu->min_policy_pct, limits->min_sysfs_pct);
++	cpu->max_perf_pct = min(cpu->max_policy_pct, limits->max_sysfs_pct);
++	cpu->min_perf = div_fp(cpu->min_perf_pct, 100);
++	cpu->max_perf = div_fp(cpu->max_perf_pct, 100);
++	cpu->max_perf = round_up(cpu->max_perf, FRAC_BITS);
++	
++	mutex_unlock(&perf_limits_lock);
++	pr_debug("cpu->min:%d, cpu->max:%d, limit->min:%d, limit->max:%d\n",
++			cpu->min_perf_pct, cpu->max_perf_pct, limits->min_sysfs_pct,
++			limits->max_sysfs_pct);
++out:
+ 	if (hwp_active)
+ 		intel_pstate_hwp_set(policy->cpus);
+ 
+@@ -1196,7 +1278,7 @@ static int intel_pstate_cpu_init(struct cpufreq_policy *policy)
+ 
+ 	cpu = all_cpu_data[policy->cpu];
+ 
+-	if (limits->min_perf_pct == 100 && limits->max_perf_pct == 100)
++	if (cpu->min_perf_pct == 100 && cpu->max_perf_pct == 100)
+ 		policy->policy = CPUFREQ_POLICY_PERFORMANCE;
+ 	else
+ 		policy->policy = CPUFREQ_POLICY_POWERSAVE;
