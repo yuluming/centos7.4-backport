@@ -1,0 +1,21 @@
+--- linux-4.14.14/drivers/cpufreq/intel_pstate.c.orig	2018-01-24 19:47:44.949413944 +0800
++++ linux-4.14.14/drivers/cpufreq/intel_pstate.c	2018-01-23 05:23:42.733499212 +0800
+@@ -1623,6 +1623,8 @@
+ 	ICPU(INTEL_FAM6_ATOM_AIRMONT,		airmont_funcs),
+ 	ICPU(INTEL_FAM6_SKYLAKE_MOBILE,		core_funcs),
+ 	ICPU(INTEL_FAM6_BROADWELL_X,		core_funcs),
++	/*skx software pstate*/
++	ICPU(INTEL_FAM6_SKYLAKE_X, 		core_funcs),
+ 	ICPU(INTEL_FAM6_SKYLAKE_DESKTOP,	core_funcs),
+ 	ICPU(INTEL_FAM6_BROADWELL_XEON_D,	core_funcs),
+ 	ICPU(INTEL_FAM6_XEON_PHI_KNL,		knl_funcs),
+@@ -2257,7 +2259,9 @@
+ #endif /* CONFIG_ACPI */
+ 
+ static const struct x86_cpu_id hwp_support_ids[] __initconst = {
++/*
+ 	{ X86_VENDOR_INTEL, 6, X86_MODEL_ANY, X86_FEATURE_HWP },
++*/
+ 	{}
+ };
+ 
