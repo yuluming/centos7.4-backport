@@ -1,0 +1,60 @@
+--- simple-pt/simple-pt.c	2017-08-27 18:28:09.008771149 +0800
++++ simple-pt/simple-pt/simple-pt.c	2018-11-15 08:51:22.000000000 +0800
+@@ -594,7 +594,7 @@
+ 	/* allocate buffer */
+ 	pt_buffer = per_cpu(pt_buffer_cpu, cpu);
+ 	if (!pt_buffer) {
+-		pt_buffer = __get_free_pages(GFP_KERNEL|__GFP_NOWARN|__GFP_ZERO, pt_buffer_order);
++		pt_buffer = __get_free_pages(GFP_ATOMIC| __GFP_NOWARN|__GFP_ZERO, pt_buffer_order);
+ 		if (!pt_buffer) {
+ 			pr_err("cpu %d, Cannot allocate %ld KB buffer\n", cpu,
+ 					(PAGE_SIZE << pt_buffer_order) / 1024);
+@@ -609,7 +609,7 @@
+ 		if (!topa) {
+ 			int n;
+ 
+-			topa = (u64 *)__get_free_page(GFP_KERNEL|__GFP_ZERO);
++			topa = (u64 *)__get_free_page(GFP_ATOMIC|__GFP_ZERO);
+ 			if (!topa) {
+ 				pr_err("cpu %d, Cannot allocate topa page\n", cpu);
+ 				goto out_pt_buffer;
+@@ -622,7 +622,7 @@
+ 				(pt_buffer_order << TOPA_SIZE_SHIFT);
+ 			for (; n < pt_num_buffers; n++) {
+ 				void *buf = (void *)__get_free_pages(
+-					GFP_KERNEL|__GFP_NOWARN|__GFP_ZERO,
++					__GFP_NOWARN|__GFP_ZERO|GFP_ATOMIC,
+ 					pt_buffer_order);
+ 				if (!buf) {
+ 					pr_warn("Cannot allocate %d'th PT buffer\n", n);
+@@ -814,7 +814,7 @@
+ 	if (!match_comm())
+ 		return;
+ 
+-	pathbuf = (char *)__get_free_page(GFP_KERNEL);
++	pathbuf = (char *)__get_free_page(GFP_ATOMIC);
+ 	if (!pathbuf)
+ 		return;
+ 
+@@ -857,7 +857,7 @@
+ 	if (!match_comm())
+ 		return 0;
+ 
+-	pathbuf = (char *)__get_free_page(GFP_KERNEL);
++	pathbuf = (char *)__get_free_page(GFP_ATOMIC);
+ 	if (!pathbuf)
+ 		return 0;
+ 
+@@ -1080,10 +1080,10 @@
+ static int simple_pt_init(void)
+ {
+ 	int err;
+-
++/*
+ 	if (THIS_MODULE->taints)
+ 		fix_tracepoints();
+-
++*/
+ 	err = simple_pt_cpuid();
+ 	if (err < 0)
+ 		return err;
